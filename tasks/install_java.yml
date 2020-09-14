@@ -1,21 +1,24 @@
-    - name: get download links
-      get_url:
-        url: "{{ORACLE_URL}}"
-        dest: '/tmp/links'
-        validate_certs: "{{validate_certs}}"
-      changed_when: false
-
-    - name: get latest url
-      shell: cat /tmp/links | grep -ioE 'http.?://download.oracle.com/otn-pub/java/jdk/.*?/jdk-8u.*?-linux-x64.tar.gz' | tail -1
-      register: JVM_URL
-      changed_when: false
-
-    - when: JVM_URL.rc != 0 or JVM_URL.stderr != ""
+    - set_fact: JDK_URL_ENV="{{ lookup('env', 'JDK_URL') }}"
+    - when: JDK_URL_ENV != ""
       block:
-      - debug: msg="Getting JVM url failed {{JVM_URL.stdout}} -> {{JVM_URL.stderr}}"
-      - meta: end_play
+        - set_fact: JDK_URL="{{ JDK_URL_ENV }}"
 
-    - set_fact: JVM_ZIP="/tmp/{{JVM_URL.stdout | basename}}"
+    - set_fact: JVM_ZIPFILE="{{ lookup('env', 'JVM_ZIPFILE') }}"
+    - when: jdk_url is defined
+      block:
+      - set_fact: JDK_URL="{{ jdk_url }}"
+    - when: jvm_zipfile is defined
+      block:
+      - set_fact: JVM_ZIPFILE="{{ jvm_zipfile }}"
+
+    - when: JVM_ZIPFILE == ""
+      block:
+      - set_fact: JVM_ZIP="/tmp/{{JDK_URL | basename}}"
+
+    - when: JVM_ZIPFILE != ""
+      block:
+      - set_fact: JVM_ZIP="/tmp/{{JVM_ZIPFILE}}"
+
     - set_fact: jvm_ver="{{installed_jvm_version.stdout | regex_replace('_', 'u') | regex_replace('1.8.0', '8') }}"
     - set_fact: upgrade_needed="{{jvm_ver == '' or not jvm_ver in JVM_ZIP }}"
 
@@ -25,10 +28,10 @@
       - stat: path="{{JVM_ZIP}}"
         register: jvm_zip_file
 
-      - name: "downloading {{JVM_URL.stdout}}"
+      - name: "downloading {{JVM_ZIP}}"
         when: not jvm_zip_file.stat.exists
         get_url:
-          url:     "{{ JVM_URL.stdout }}"
+          url:     "{{ JDK_URL }}"
           headers: 'Cookie:oraclelicense=accept-securebackup-cookie'
           dest:    "{{JVM_ZIP}}"
           validate_certs: "{{validate_certs}}"
